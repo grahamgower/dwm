@@ -62,7 +62,8 @@ enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
-       NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetClientList,
+       NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -169,6 +170,7 @@ static void focus(Client *c);
 static void focusin(XEvent *e);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
+static long getcardinalprop(Window win, Atom prop);
 static int getrootptr(int *x, int *y);
 static long getstate(Window w);
 static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
@@ -221,7 +223,9 @@ static void unmanage(Client *c, int destroyed);
 static void unmapnotify(XEvent *e);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
+static void updateclientdesktop(Client *c);
 static void updateclientlist(void);
+static void updatecurrentdesktop(void);
 static int updategeom(void);
 static void updatenumlockmask(void);
 static void updatesizehints(Client *c);
@@ -385,6 +389,8 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 void
 arrange(Monitor *m)
 {
+	if (running)
+		updatecurrentdesktop();
 	if (m)
 		showhide(m->stack);
 	else for (m = mons; m; m = m->next)
@@ -864,16 +870,33 @@ Atom
 getatomprop(Client *c, Atom prop)
 {
 	int di;
-	unsigned long dl;
+	unsigned long dl, dr;
 	unsigned char *p = NULL;
 	Atom da, atom = None;
 
 	if (XGetWindowProperty(dpy, c->win, prop, 0L, sizeof atom, False, XA_ATOM,
-		&da, &di, &dl, &dl, &p) == Success && p) {
+		&da, &di, &dl, &dr, &p) == Success && p) {
 		atom = *(Atom *)p;
 		XFree(p);
 	}
 	return atom;
+}
+
+long
+getcardinalprop(Window win, Atom prop)
+{
+	int di;
+	unsigned long dl, dr;
+	unsigned char *p = NULL;
+	Atom da;
+	long data = -1;
+
+	if (XGetWindowProperty(dpy, win, prop, 0L, 1, False, XA_CARDINAL,
+		&da, &di, &dl, &dr, &p) == Success && p) {
+		data = *(long *)p;
+		XFree(p);
+	}
+	return data;
 }
 
 int
@@ -1025,6 +1048,7 @@ manage(Window w, XWindowAttributes *wa)
 	Client *c, *t = NULL;
 	Window trans = None;
 	XWindowChanges wc;
+	unsigned int newtags;
 
 	c = ecalloc(1, sizeof(Client));
 	c->win = w;
@@ -1042,6 +1066,8 @@ manage(Window w, XWindowAttributes *wa)
 	} else {
 		c->mon = selmon;
 		applyrules(c);
+		if ((newtags = getcardinalprop(c->win, netatom[NetWMDesktop])) != -1)
+			c->tags = newtags;
 	}
 
 	if (c->x + WIDTH(c) > c->mon->mx + c->mon->mw)
@@ -1079,6 +1105,7 @@ manage(Window w, XWindowAttributes *wa)
 	arrange(c->mon);
 	XMapWindow(dpy, c->win);
 	focus(NULL);
+	updateclientdesktop(c);
 }
 
 void
@@ -1422,6 +1449,7 @@ sendmon(Client *c, Monitor *m)
 	detachstack(c);
 	c->mon = m;
 	c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
+	updateclientdesktop(c);
 	attach(c);
 	attachstack(c);
 	focus(NULL);
@@ -1535,6 +1563,7 @@ void
 setup(void)
 {
 	int i;
+	unsigned int newtags;
 	XSetWindowAttributes wa;
 	Atom utf8string;
 
@@ -1564,9 +1593,11 @@ setup(void)
 	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
 	netatom[NetWMCheck] = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+	netatom[NetCurrentDesktop] = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
+	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
@@ -1599,6 +1630,12 @@ setup(void)
 	XSelectInput(dpy, root, wa.event_mask);
 	grabkeys();
 	focus(NULL);
+	if ((newtags = getcardinalprop(root, netatom[NetCurrentDesktop])) != -1) {
+		selmon->seltags ^= 1; /* toggle sel tagset */
+		selmon->tagset[selmon->seltags] = newtags & TAGMASK;
+	}
+	focus(NULL);
+	arrange(selmon);
 }
 
 
@@ -1662,6 +1699,7 @@ tag(const Arg *arg)
 {
 	if (selmon->sel && arg->ui & TAGMASK) {
 		selmon->sel->tags = arg->ui & TAGMASK;
+		updateclientdesktop(selmon->sel);
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -1867,6 +1905,7 @@ tagtoleft(const Arg *arg) {
 		selmon->seltags ^= 1; /* toggle sel tagset */
 		selmon->tagset[selmon->seltags] = selmon->tagset[selmon->seltags ^ 1] >> 1;
 		selmon->sel->tags >>= 1;
+		updateclientdesktop(selmon->sel);
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -1880,9 +1919,24 @@ tagtoright(const Arg *arg) {
 		selmon->seltags ^= 1; /* toggle sel tagset */
 		selmon->tagset[selmon->seltags] = selmon->tagset[selmon->seltags ^ 1] << 1;
 		selmon->sel->tags <<= 1;
+		updateclientdesktop(selmon->sel);
 		focus(NULL);
 		arrange(selmon);
 	}
+}
+
+void
+updateclientdesktop(Client *c) {
+	long data[] = { c->tags };
+	XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)data, 1);
+}
+
+void
+updatecurrentdesktop(){
+	long data[] = { selmon->tagset[selmon->seltags] };
+	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)data, 1);
 }
 
 int
