@@ -202,9 +202,18 @@ togglewintitle(const Arg *arg)
 {
 	Monitor *m;
 	Client *c;
+	int n;
 
 	if (arg->i) {
-		// add
+		if (&monocle == selmon->lt[selmon->sellt]->arrange)
+			return;
+		for (n = 0, c = nexttiled(selmon->clients); c; c = nexttiled(c->next), n++)
+			if (c->isfullscreen) {
+				n = 0;
+				break;
+			}
+		if (n <= 1)
+			return;
 		for (c = nexttiled(selmon->clients); c; c = nexttiled(c->next)) {
 			XSetWindowAttributes wa = {
 				.override_redirect = True,
