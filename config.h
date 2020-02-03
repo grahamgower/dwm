@@ -3,7 +3,7 @@
 /* appearance */
 static const unsigned int borderpx  = 4;        /* border pixel of windows */
 static const unsigned int snap      = 32;       /* snap pixel */
-static const int showbar            = 1;        /* 0 means no bar */
+static const int showbar            = 0;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
 static const char barfont[]       = "Cascadia code:size=13";
 static const char termfont[]       = "DejaVu Sans Mono:size=12";
@@ -67,9 +67,14 @@ static const char *termcmd2[]  = { "st", "-f", termfont, "tmux", NULL };
 static const char *termcmd2_snm[]  = { "xterm.sh", "-e", "ssh snm", NULL };
 
 void movestack(const Arg *arg);
+void togglewintitle(const Arg *arg);
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
+	{ KeyPress,    0,                            XK_Alt_L,  togglebar,      {0} },
+	{ KeyRelease,  MODKEY,                       XK_Alt_L,  togglebar,      {0} },
+	{ KeyPress,    0,                            XK_Alt_L,  togglewintitle, {.i = 1} },
+	{ KeyRelease,  MODKEY,                       XK_Alt_L,  togglewintitle, {.i = 0} },
 	{ KeyPress,    MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
 	{ KeyPress,    MODKEY|ShiftMask,             XK_Return, spawn,          {.v = termcmd } },
 	{ KeyPress,    MODKEY,                       XK_F1,     spawn,          {.v = termcmd2 } },
@@ -180,3 +185,53 @@ movestack(const Arg *arg) {
 	}
 }
 
+void
+removewintitle(Monitor *m)
+{
+	Client *c;
+	for (c = selmon->clients; c; c = c->next)
+		if (c->title != BadWindow) {
+			XUnmapWindow(dpy, c->title);
+			XDestroyWindow(dpy, c->title);
+			c->title = BadWindow;
+		}
+}
+
+void
+togglewintitle(const Arg *arg)
+{
+	Monitor *m;
+	Client *c;
+
+	if (arg->i) {
+		// add
+		for (c = nexttiled(selmon->clients); c; c = nexttiled(c->next)) {
+			XSetWindowAttributes wa = {
+				.override_redirect = True,
+				.background_pixmap = ParentRelative,
+				.event_mask = ButtonPressMask|ExposureMask
+			};
+			XClassHint ch;
+			int w = c->w; // + 2*borderpx;
+
+			c->title = XCreateWindow(dpy, root,
+				c->x+borderpx, c->y+c->h+borderpx-bh,
+				w, bh, 0, DefaultDepth(dpy, screen),
+				CopyFromParent, DefaultVisual(dpy, screen),
+				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+			XDefineCursor(dpy, c->title, cursor[CurNormal]->cursor);
+			XMapRaised(dpy, c->title);
+			XGetClassHint(dpy, c->win, &ch);
+			XSetClassHint(dpy, c->title, &ch);
+
+			// draw title
+			drw_setscheme(drw, scheme[SchemeSel]);
+			drw_text(drw, 0, 0, w, bh, lrpad / 2, c->name, 0);
+			drw_map(drw, c->title, 0, 0, w, bh);
+		}
+	} else {
+		for (m = mons; m; m = m->next)
+			removewintitle(m);
+	}
+
+}

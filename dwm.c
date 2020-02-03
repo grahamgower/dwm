@@ -98,6 +98,7 @@ struct Client {
 	Client *snext;
 	Monitor *mon;
 	Window win;
+	Window title;
 };
 
 typedef struct {
@@ -393,10 +394,13 @@ arrange(Monitor *m)
 {
 	if (running)
 		updatecurrentdesktop();
-	if (m)
+	if (m) {
+		removewintitle(m);
 		showhide(m->stack);
-	else for (m = mons; m; m = m->next)
+	} else for (m = mons; m; m = m->next) {
+		removewintitle(m);
 		showhide(m->stack);
+	}
 	if (m) {
 		arrangemon(m);
 		restack(m);
@@ -1069,6 +1073,7 @@ manage(Window w, XWindowAttributes *wa)
 
 	c = ecalloc(1, sizeof(Client));
 	c->win = w;
+	c->title = BadWindow;
 	/* geometry */
 	c->x = c->oldx = wa->x;
 	c->y = c->oldy = wa->y;
@@ -1892,11 +1897,9 @@ updatebarpos(Monitor *m)
 {
 	m->wy = m->my;
 	m->wh = m->mh;
-	if (m->showbar) {
-		m->wh -= bh;
-		m->by = m->topbar ? m->wy : m->wy + m->wh;
-		m->wy = m->topbar ? m->wy + bh : m->wy;
-	} else
+	if (m->showbar)
+		m->by = m->topbar ? m->wy : m->wy + m->wh -bh;
+	else
 		m->by = -bh;
 }
 
