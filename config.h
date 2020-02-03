@@ -70,11 +70,18 @@ void movestack(const Arg *arg);
 void togglewintitle(const Arg *arg);
 
 static Key keys[] = {
-	/* modifier                     key        function        argument */
+	/* type		modifier                     key        function        argument */
 	{ KeyPress,    0,                            XK_Alt_L,  togglebar,      {0} },
 	{ KeyRelease,  MODKEY,                       XK_Alt_L,  togglebar,      {0} },
+	{ KeyRelease,  MODKEY|ShiftMask,             XK_Alt_L,  togglebar,      {0} },
+	{ KeyRelease,  MODKEY|ControlMask,           XK_Alt_L,  togglebar,      {0} },
+	{ KeyRelease,  MODKEY|ControlMask|ShiftMask, XK_Alt_L,  togglebar,      {0} },
 	{ KeyPress,    0,                            XK_Alt_L,  togglewintitle, {.i = 1} },
 	{ KeyRelease,  MODKEY,                       XK_Alt_L,  togglewintitle, {.i = 0} },
+	{ KeyRelease,  MODKEY|ShiftMask,             XK_Alt_L,  togglewintitle, {.i = 0} },
+	{ KeyRelease,  MODKEY|ControlMask,           XK_Alt_L,  togglewintitle, {.i = 0} },
+	{ KeyRelease,  MODKEY|ControlMask|ShiftMask, XK_Alt_L,  togglewintitle, {.i = 0} },
+
 	{ KeyPress,    MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
 	{ KeyPress,    MODKEY|ShiftMask,             XK_Return, spawn,          {.v = termcmd } },
 	{ KeyPress,    MODKEY,                       XK_F1,     spawn,          {.v = termcmd2 } },
