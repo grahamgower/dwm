@@ -1017,7 +1017,8 @@ keypress(XEvent *e)
 {
 	unsigned int i;
 	KeySym keysym;
-	XKeyEvent *ev;
+	XEvent e2;
+	XKeyEvent *ev, *ev2;
 
 	ev = &e->xkey;
 	keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
@@ -1025,8 +1026,21 @@ keypress(XEvent *e)
 		if (keysym == keys[i].keysym
 		&& ev->type == keys[i].type
 		&& CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)
-		&& keys[i].func)
+		&& keys[i].func) {
+			if (ev->type == KeyRelease && XPending(dpy)) {
+				XPeekEvent(dpy, &e2);
+				ev2 = &e2.xkey;
+				if (ev2->type == KeyPress
+				&& ev2->keycode == ev->keycode
+				&& ev2->state == ev->state
+				&& ev2->time == ev->time) {
+					/* This is an autorepeat; discard. */
+					XNextEvent(dpy, &e2);
+					break;
+				}
+			}
 			keys[i].func(&(keys[i].arg));
+		}
 }
 
 void
