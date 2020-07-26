@@ -65,6 +65,9 @@ static const char *termcmd[]  = { "st", "-f", dmenufont, NULL };
 static const char *termcmd2[]  = { "st", "-f", dmenufont, "tmux", NULL };
 static const char *termcmd2_snm[]  = { "xterm.sh", "-e", "ssh snm", NULL };
 
+void viewshift(const Arg *arg);
+void tagshift(const Arg *arg);
+
 static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
@@ -88,10 +91,14 @@ static Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
-	{ MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
-	{ MODKEY,                       XK_period, focusmon,       {.i = +1 } },
-	{ MODKEY|ShiftMask,             XK_comma,  tagmon,         {.i = -1 } },
-	{ MODKEY|ShiftMask,             XK_period, tagmon,         {.i = +1 } },
+	{ MODKEY,                       XK_s,      focusmon,       {.i = -1 } },
+	{ MODKEY,                       XK_w,      focusmon,       {.i = +1 } },
+	{ MODKEY|ShiftMask,             XK_s,      tagmon,         {.i = -1 } },
+	{ MODKEY|ShiftMask,             XK_w,      tagmon,         {.i = +1 } },
+	{ MODKEY,                       XK_a,      viewshift,      {.i = -1 } },
+	{ MODKEY,                       XK_d,      viewshift,      {.i = +1 } },
+	{ MODKEY|ShiftMask,             XK_a,      tagshift,       {.i = -1 } },
+	{ MODKEY|ShiftMask,             XK_d,      tagshift,       {.i = +1 } },
 	TAGKEYS(                        XK_1,                      0)
 	TAGKEYS(                        XK_2,                      1)
 	TAGKEYS(                        XK_3,                      2)
@@ -120,3 +127,36 @@ static Button buttons[] = {
 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },
 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
 };
+
+int
+shift(int i)
+{
+	int tag = selmon->tagset[selmon->seltags];
+	if (i > 0) {
+		if (tag == 1 << (LENGTH(tags)-1))
+			tag = 1;
+		else
+			tag <<= 1;
+	} else {
+		if (tag == 1)
+			tag = 1 << (LENGTH(tags)-1);
+		else
+			tag >>= 1;
+	}
+	return tag;
+}
+
+void
+viewshift(const Arg *arg)
+{
+	view(&(Arg){.ui = shift(arg->i)});
+}
+
+void
+tagshift(const Arg *arg)
+{
+	int tag = shift(arg->i);
+	if (selmon->sel && tag & TAGMASK)
+		selmon->sel->tags = tag & TAGMASK;
+	view(&(Arg){.ui = tag});
+}
