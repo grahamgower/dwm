@@ -36,9 +36,10 @@ static const Rule rules[] = {
 };
 
 /* layout(s) */
-static const float mfact     = 0.55; /* factor of master area size [0.05..0.95] */
+static const float mfact     = 0.50; /* factor of master area size [0.05..0.95] */
 static const int nmaster     = 1;    /* number of clients in master area */
 static const int resizehints = 0;    /* 1 means respect size hints in tiled resizals */
+static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
@@ -48,7 +49,8 @@ static const Layout layouts[] = {
 };
 
 /* key definitions */
-#define MODKEY Mod4Mask
+#define MODKEY Mod4Mask  /* windows key */
+#define MODKEY2 Mod3Mask  /* mapped to CAPSLOCK with xmodmap */
 #define TAGKEYS(KEY,TAG) \
 	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
@@ -63,17 +65,16 @@ static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() 
 static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray4, "-sb", col_yellow, "-sf", col_gray1, NULL };
 static const char *termcmd[]  = { "st", "-f", dmenufont, NULL };
 static const char *termcmd2[]  = { "st", "-f", dmenufont, "tmux", NULL };
-static const char *termcmd2_snm[]  = { "xterm.sh", "-e", "ssh snm", NULL };
 
 void viewshift(const Arg *arg);
 void tagshift(const Arg *arg);
+void toggle_fullscreen(const Arg *arg);
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
-	{ MODKEY|ShiftMask,             XK_Return, spawn,          {.v = termcmd } },
+	{ MODKEY,                       XK_Return, spawn,          {.v = termcmd2 } },
 	{ MODKEY,                       XK_F1,     spawn,          {.v = termcmd2 } },
-	{ MODKEY,                       XK_F2,     spawn,          {.v = termcmd2_snm } },
 	{ MODKEY,                       XK_b,      togglebar,      {0} },
 	{ MODKEY,                       XK_j,      focusstack,     {.i = -1 } },
 	{ MODKEY,                       XK_k,      focusstack,     {.i = +1 } },
@@ -81,7 +82,6 @@ static Key keys[] = {
 	{ MODKEY,                       XK_d,      incnmaster,     {.i = -1 } },
 	{ MODKEY,                       XK_h,      setmfact,       {.f = -0.05} },
 	{ MODKEY,                       XK_l,      setmfact,       {.f = +0.05} },
-	{ MODKEY,                       XK_Return, zoom,           {0} },
 	{ MODKEY,                       XK_Tab,    view,           {0} },
 	{ MODKEY|ShiftMask,             XK_c,      killclient,     {0} },
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
@@ -91,14 +91,18 @@ static Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
-	{ MODKEY,                       XK_s,      focusmon,       {.i = -1 } },
-	{ MODKEY,                       XK_w,      focusmon,       {.i = +1 } },
-	{ MODKEY|ShiftMask,             XK_s,      tagmon,         {.i = -1 } },
-	{ MODKEY|ShiftMask,             XK_w,      tagmon,         {.i = +1 } },
-	{ MODKEY,                       XK_a,      viewshift,      {.i = -1 } },
-	{ MODKEY,                       XK_d,      viewshift,      {.i = +1 } },
-	{ MODKEY|ShiftMask,             XK_a,      tagshift,       {.i = -1 } },
-	{ MODKEY|ShiftMask,             XK_d,      tagshift,       {.i = +1 } },
+	{ MODKEY|ShiftMask,             XK_f,      toggle_fullscreen,{0} },
+
+	{ MODKEY2,                       XK_Return, zoom,           {0} },
+	{ MODKEY2,                       XK_j,      focusmon,       {.i = -1 } },
+	{ MODKEY2,                       XK_k,      focusmon,       {.i = +1 } },
+	{ MODKEY2|ShiftMask,             XK_j,      tagmon,         {.i = -1 } },
+	{ MODKEY2|ShiftMask,             XK_k,      tagmon,         {.i = +1 } },
+	{ MODKEY2,                       XK_h,      viewshift,      {.i = -1 } },
+	{ MODKEY2,                       XK_l,      viewshift,      {.i = +1 } },
+	{ MODKEY2|ShiftMask,             XK_h,      tagshift,       {.i = -1 } },
+	{ MODKEY2|ShiftMask,             XK_l,      tagshift,       {.i = +1 } },
+
 	TAGKEYS(                        XK_1,                      0)
 	TAGKEYS(                        XK_2,                      1)
 	TAGKEYS(                        XK_3,                      2)
@@ -113,7 +117,7 @@ static Key keys[] = {
 
 /* button definitions */
 /* click can be ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle, ClkClientWin, or ClkRootWin */
-static Button buttons[] = {
+static const Button buttons[] = {
 	/* click                event mask      button          function        argument */
 	{ ClkLtSymbol,          0,              Button1,        setlayout,      {0} },
 	{ ClkLtSymbol,          0,              Button3,        setlayout,      {.v = &layouts[2]} },
@@ -159,4 +163,13 @@ tagshift(const Arg *arg)
 	if (selmon->sel && tag & TAGMASK)
 		selmon->sel->tags = tag & TAGMASK;
 	view(&(Arg){.ui = tag});
+}
+
+void
+toggle_fullscreen(const Arg *arg)
+{
+	Client *c = selmon->sel;
+	if (!c)
+		return;
+    setfullscreen(c, !c->isfullscreen);
 }
